@@ -8,13 +8,13 @@ import (
 	"net"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -23,10 +23,34 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
+var (
+	statusPKPath      string
+	currentCommitHash string
+)
+
+type xinStatus struct {
+	widget.Icon
+
+	debug        bool
+	tabs         *container.AppTabs
+	cards        []fyne.CanvasObject
+	boundStrings []binding.ExternalString
+	log          *widget.TextGrid
+}
+
+func (x *xinStatus) prependLog(s string) {
+	text := x.log.Text()
+	now := time.Now()
+	x.log.SetText(strings.Join([]string{
+		fmt.Sprintf("%s: %s", now.Format(time.RFC822), s),
+		text,
+	}, "\n"))
+}
+
 type Config struct {
 	Statuses    []*Status `json:"statuses"`
 	Repo        string    `json:"repo"`
-	PrivKeyPath string    `json:"ppriv_key_path"`
+	PrivKeyPath string    `json:"priv_key_path"`
 }
 
 func (c *Config) Load(file string) error {
@@ -59,6 +83,16 @@ func (s *Status) Update() error {
 		return fmt.Errorf("can't parse %q: %q", khFile, err)
 	}
 
+	key, err := os.ReadFile(statusPKPath)
+	if err != nil {
+		return fmt.Errorf("can't load key %q: %q", statusPKPath, err)
+	}
+
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return fmt.Errorf("can't parse key: %q", err)
+	}
+
 	socket := os.Getenv("SSH_AUTH_SOCK")
 	agentConn, err := net.Dial("unix", socket)
 	if err != nil {
@@ -70,8 +104,10 @@ func (s *Status) Update() error {
 		User:              s.User,
 		HostKeyAlgorithms: []string{"ssh-ed25519"},
 		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
 			ssh.PublicKeysCallback(agentClient.Signers),
 		},
+		Timeout:         2 * time.Second,
 		HostKeyCallback: hostKeyCB,
 	}
 	conn, err := ssh.Dial("tcp", s.DialString(), sshConf)
@@ -142,46 +178,80 @@ func (s *Status) ToTable() *widget.Table {
 	return t
 }
 
-func buildCards(c *Config) fyne.CanvasObject {
+func buildCards(c *Config, stat *xinStatus) fyne.CanvasObject {
 	var cards []fyne.CanvasObject
 	for _, s := range c.Statuses {
-		boundStr := binding.BindString(&s.NixosVersion)
+		boundStr := binding.BindString(&s.ConfigurationRevision)
 		bsl := widget.NewLabelWithData(boundStr)
 
-		card := widget.NewCard(s.Host, "", bsl)
+		stat.boundStrings = append(stat.boundStrings, boundStr)
 
+		//circle := canvas.NewCircle(theme.SelectionColor())
+		//circle.FillColor = color.RGBA{48, 190, 37, 0}
+		//circle.StrokeWidth = 30
+		//circle.StrokeColor = theme.TextColor()
+		//if s.ConfigurationRevision == "DIRTY" {
+		//	circle.FillColor = theme.ErrorColor()
+		//}
+		//circle.Resize(fyne.NewSize(250, 250))
+
+		//card := widget.NewCard(s.Host, "", container.NewVBox(bsl, circle))
+		card := widget.NewCard(s.Host, "", container.NewVBox(bsl))
 		cards = append(cards, card)
 	}
-	return container.NewGridWithColumns(2, cards...)
+	stat.cards = cards
+	return container.NewVBox(
+		widget.NewCard("Some commit message", "somehash", nil),
+		container.NewGridWithColumns(2, cards...),
+	)
+}
+
+func doUpdate(c *Config, status *xinStatus) error {
+	for _, h := range c.Statuses {
+		err := h.Update()
+		if err != nil {
+			status.prependLog(err.Error())
+		}
+	}
+	return nil
 }
 
 func main() {
-	dataPath := path.Clean(path.Join(os.Getenv("HOME"), ".xin.json"))
+	status := &xinStatus{}
 	data := &Config{}
+	dataPath := path.Clean(path.Join(os.Getenv("HOME"), ".xin.json"))
 	err := data.Load(dataPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	statusPKPath = data.PrivKeyPath
+
 	a := app.New()
 	w := a.NewWindow("xintray")
+
+	tabs := container.NewAppTabs(
+		container.NewTabItemWithIcon("Status", theme.ComputerIcon(), buildCards(data, status)),
+	)
+
+	status.tabs = tabs
+	status.log = widget.NewTextGrid()
+
+	err = doUpdate(data, status)
 
 	go func() {
 		for {
 			log.Println("updating host info")
-			for _, h := range data.Statuses {
-				err := h.Update()
-				if err != nil {
-					showError(err, w, a)
-				}
+			err = doUpdate(data, status)
+			if err != nil {
+				status.log.SetText(err.Error())
 			}
-			time.Sleep(3 * time.Minute)
+			for _, s := range status.boundStrings {
+				s.Reload()
+			}
+			time.Sleep(1 * time.Minute)
 		}
 	}()
-
-	tabs := container.NewAppTabs(
-		container.NewTabItemWithIcon("Status", theme.ComputerIcon(), buildCards(data)),
-	)
 
 	for _, s := range data.Statuses {
 		tabs.Append(container.NewTabItem(s.Host, s.ToTable()))
@@ -197,18 +267,14 @@ func main() {
 		desk.SetSystemTrayMenu(m)
 	}
 
-	//w.SetContent(container.New(&xinLayout{}, tabs))
-	w.SetContent(tabs)
+	status.log.SetText("starting...")
+
+	w.SetContent(container.NewAppTabs(
+		container.NewTabItem("Hosts", tabs),
+		container.NewTabItem("Logs", container.NewMax(status.log)),
+	))
 	w.SetCloseIntercept(func() {
 		w.Hide()
 	})
 	w.ShowAndRun()
-}
-
-func showError(err error, w fyne.Window, a fyne.App) {
-	d := dialog.NewError(err, w)
-	d.SetOnClosed(func() {
-
-	})
-	d.Show()
 }
