@@ -1,14 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"os"
+	"os/exec"
 	"path"
-	"strings"
+	"sort"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -19,32 +20,180 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-var (
-	statusPKPath      string
-	currentCommitHash string
-)
+var commitCache = make(map[string]string)
 
 type xinStatus struct {
-	widget.Icon
-
-	debug        bool
-	tabs         *container.AppTabs
-	cards        []fyne.CanvasObject
-	boundStrings []binding.ExternalString
-	log          *widget.TextGrid
+	debug           bool
+	tabs            *container.AppTabs
+	cards           []fyne.CanvasObject
+	boundStrings    []binding.ExternalString
+	boundBools      []binding.ExternalBool
+	log             *widget.TextGrid
+	repoCommitHash  string
+	repoCommitMsg   string
+	config          Config
+	upgradeProgress *widget.ProgressBar
 }
 
-func (x *xinStatus) prependLog(s string) {
-	text := x.log.Text()
-	now := time.Now()
-	x.log.SetText(strings.Join([]string{
-		fmt.Sprintf("%s: %s", now.Format(time.RFC822), s),
-		text,
-	}, "\n"))
+type Status struct {
+	card              *widget.Card
+	commitMessage     string
+	client            *ssh.Client
+	clientEstablished bool
+
+	ConfigurationRevision string `json:"configurationRevision"`
+	NeedsRestart          bool   `json:"needs_restart"`
+	NixosVersion          string `json:"nixosVersion"`
+	NixpkgsRevision       string `json:"nixpkgsRevision"`
+	Host                  string `json:"host"`
+	Port                  int32  `json:"port"`
+}
+
+func trim(b []byte) string {
+	head := bytes.Split(b, []byte("\n"))
+	return string(head[0])
+}
+
+func (x *xinStatus) uptodate() bool {
+	return x.upgradeProgress.Value == float64(len(x.config.Statuses))
+}
+
+func (x *xinStatus) getCommitInfo(c string) string {
+	if c == "DIRTY" {
+		return c
+	}
+
+	if commitCache[c] != "" {
+		return commitCache[c]
+	}
+
+	msgCmd := exec.Command("git", "log", "--format=%B", "-n", "1", c)
+	msgCmd.Dir = x.config.Repo
+	msg, err := msgCmd.Output()
+	if err != nil {
+		x.Log(err.Error())
+	}
+
+	strMsg := trim(msg)
+	commitCache[c] = strMsg
+	return strMsg
+}
+
+func (x *xinStatus) updateRepoInfo() error {
+	revCmd := exec.Command("git", "rev-parse", "HEAD")
+	revCmd.Dir = x.config.Repo
+	currentRev, err := revCmd.Output()
+	if err != nil {
+		return err
+	}
+
+	x.repoCommitHash = trim(currentRev)
+
+	if commitCache[x.repoCommitHash] != "" {
+		x.repoCommitMsg = commitCache[x.repoCommitHash]
+	} else {
+		x.repoCommitMsg = x.getCommitInfo(x.repoCommitHash)
+	}
+
+	return nil
+}
+
+func (x *xinStatus) updateHostInfo() error {
+	khFile := path.Clean(path.Join(os.Getenv("HOME"), ".ssh/known_hosts"))
+	hostKeyCB, err := knownhosts.New(khFile)
+	if err != nil {
+		return fmt.Errorf("can't parse %q: %q", khFile, err)
+	}
+
+	key, err := os.ReadFile(x.config.PrivKeyPath)
+	if err != nil {
+		return fmt.Errorf("can't load key %q: %q", x.config.PrivKeyPath, err)
+	}
+
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return fmt.Errorf("can't parse key: %q", err)
+	}
+
+	sshConf := &ssh.ClientConfig{
+		User:              "root",
+		HostKeyAlgorithms: []string{"ssh-ed25519"},
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		Timeout:         2 * time.Second,
+		HostKeyCallback: hostKeyCB,
+	}
+
+	upToDateCount := len(x.config.Statuses)
+	for _, s := range x.config.Statuses {
+		var err error
+		ds := fmt.Sprintf("%s:%d", s.Host, s.Port)
+		if !s.clientEstablished {
+			s.client, err = ssh.Dial("tcp", ds, sshConf)
+			if err != nil {
+				s.card.Subtitle = "can't connect"
+				upToDateCount = upToDateCount - 1
+				x.Log(fmt.Sprintf("can't Dial host %q (%q): %q", s.Host, ds, err))
+				s.card.Refresh()
+				continue
+			}
+			s.clientEstablished = true
+		}
+
+		session, err := s.client.NewSession()
+		if err != nil {
+			x.Log(fmt.Sprintf("can't create session: %q", err))
+			upToDateCount = upToDateCount - 1
+			s.clientEstablished = false
+			continue
+		}
+		defer session.Close()
+
+		output, err := session.Output("xin-status")
+		if err != nil {
+			x.Log(fmt.Sprintf("can't run command: %q", err))
+			upToDateCount = upToDateCount - 1
+			continue
+		}
+
+		err = json.Unmarshal(output, s)
+		if err != nil {
+			x.Log(err.Error())
+			upToDateCount = upToDateCount - 1
+			continue
+		}
+
+		if s.ConfigurationRevision != x.repoCommitHash {
+			s.card.Subtitle = fmt.Sprintf("%.8s", s.ConfigurationRevision)
+			upToDateCount = upToDateCount - 1
+		} else {
+			s.card.Subtitle = ""
+		}
+		s.card.Refresh()
+
+		s.commitMessage = x.getCommitInfo(s.ConfigurationRevision)
+	}
+
+	x.upgradeProgress.SetValue(float64(upToDateCount))
+
+	return nil
+}
+
+func (x *xinStatus) Log(s string) {
+	log.Println(s)
+	/*
+		text := x.log.Text()
+		now := time.Now()
+		log.Println(s)
+		x.log.SetText(strings.Join([]string{
+			fmt.Sprintf("%s: %s", now.Format(time.RFC822), s),
+			text,
+		}, "\n"))
+	*/
 }
 
 type Config struct {
@@ -60,74 +209,6 @@ func (c *Config) Load(file string) error {
 	}
 
 	return json.Unmarshal(data, &c)
-}
-
-type Status struct {
-	ConfigurationRevision string `json:"configurationRevision"`
-	NeedsRestart          bool   `json:"needs_restart"`
-	NixosVersion          string `json:"nixosVersion"`
-	NixpkgsRevision       string `json:"nixpkgsRevision"`
-	Host                  string `json:"host"`
-	Port                  int32  `json:"port"`
-	User                  string `json:"user"`
-}
-
-func (s *Status) DialString() string {
-	return fmt.Sprintf("%s:%d", s.Host, s.Port)
-}
-
-func (s *Status) Update() error {
-	khFile := path.Clean(path.Join(os.Getenv("HOME"), ".ssh/known_hosts"))
-	hostKeyCB, err := knownhosts.New(khFile)
-	if err != nil {
-		return fmt.Errorf("can't parse %q: %q", khFile, err)
-	}
-
-	key, err := os.ReadFile(statusPKPath)
-	if err != nil {
-		return fmt.Errorf("can't load key %q: %q", statusPKPath, err)
-	}
-
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return fmt.Errorf("can't parse key: %q", err)
-	}
-
-	socket := os.Getenv("SSH_AUTH_SOCK")
-	agentConn, err := net.Dial("unix", socket)
-	if err != nil {
-		return fmt.Errorf("can't Dial agent: %q, %q", socket, err)
-	}
-	agentClient := agent.NewClient(agentConn)
-
-	sshConf := &ssh.ClientConfig{
-		User:              s.User,
-		HostKeyAlgorithms: []string{"ssh-ed25519"},
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-			ssh.PublicKeysCallback(agentClient.Signers),
-		},
-		Timeout:         2 * time.Second,
-		HostKeyCallback: hostKeyCB,
-	}
-	conn, err := ssh.Dial("tcp", s.DialString(), sshConf)
-	if err != nil {
-		return fmt.Errorf("can't Dial host %q (%q): %q", s.Host, s.DialString(), err)
-	}
-	defer conn.Close()
-
-	session, err := conn.NewSession()
-	if err != nil {
-		return fmt.Errorf("can't create session: %q", err)
-	}
-	defer session.Close()
-
-	output, err := session.Output("xin-status")
-	if err != nil {
-		return fmt.Errorf("can't run command: %q", err)
-	}
-
-	return json.Unmarshal(output, s)
 }
 
 func (s *Status) ToTable() *widget.Table {
@@ -178,82 +259,109 @@ func (s *Status) ToTable() *widget.Table {
 	return t
 }
 
-func buildCards(c *Config, stat *xinStatus) fyne.CanvasObject {
+func buildCards(stat *xinStatus) fyne.CanvasObject {
 	var cards []fyne.CanvasObject
-	for _, s := range c.Statuses {
-		boundStr := binding.BindString(&s.ConfigurationRevision)
-		bsl := widget.NewLabelWithData(boundStr)
+	sort.Slice(stat.config.Statuses, func(i, j int) bool {
+		return stat.config.Statuses[i].Host < stat.config.Statuses[j].Host
+	})
+	for _, s := range stat.config.Statuses {
+		commitBStr := binding.BindString(&s.commitMessage)
+		bsl := widget.NewLabelWithData(commitBStr)
 
-		stat.boundStrings = append(stat.boundStrings, boundStr)
+		restartBBool := binding.BindBool(&s.NeedsRestart)
+		bbl := widget.NewCheckWithData("Reboot", restartBBool)
+		bbl.Disable()
 
-		//circle := canvas.NewCircle(theme.SelectionColor())
-		//circle.FillColor = color.RGBA{48, 190, 37, 0}
-		//circle.StrokeWidth = 30
-		//circle.StrokeColor = theme.TextColor()
-		//if s.ConfigurationRevision == "DIRTY" {
-		//	circle.FillColor = theme.ErrorColor()
-		//}
-		//circle.Resize(fyne.NewSize(250, 250))
+		stat.boundStrings = append(stat.boundStrings, commitBStr)
+		stat.boundBools = append(stat.boundBools, restartBBool)
 
-		//card := widget.NewCard(s.Host, "", container.NewVBox(bsl, circle))
-		card := widget.NewCard(s.Host, "", container.NewVBox(bsl))
+		card := widget.NewCard(s.Host, "",
+			container.NewVBox(
+				container.NewHBox(bbl),
+				container.NewHBox(bsl),
+			),
+		)
+
+		s.card = card
 		cards = append(cards, card)
+		stat.cards = append(stat.cards, card)
 	}
-	stat.cards = cards
-	return container.NewVBox(
-		widget.NewCard("Some commit message", "somehash", nil),
-		container.NewGridWithColumns(2, cards...),
-	)
-}
 
-func doUpdate(c *Config, status *xinStatus) error {
-	for _, h := range c.Statuses {
-		err := h.Update()
-		if err != nil {
-			status.prependLog(err.Error())
-		}
+	stat.upgradeProgress = widget.NewProgressBar()
+	stat.upgradeProgress.Min = 0
+	stat.upgradeProgress.Max = float64(len(stat.config.Statuses))
+	stat.upgradeProgress.TextFormatter = func() string {
+		return fmt.Sprintf("%.0f of %.0f hosts up-to-date",
+			stat.upgradeProgress.Value, stat.upgradeProgress.Max)
 	}
-	return nil
+
+	bsCommitMsg := binding.BindString(&stat.repoCommitMsg)
+	bsCommitHash := binding.BindString(&stat.repoCommitHash)
+
+	stat.boundStrings = append(stat.boundStrings, bsCommitMsg)
+	stat.boundStrings = append(stat.boundStrings, bsCommitHash)
+
+	statusCard := widget.NewCard("Xin Status", "", container.NewVBox(
+		widget.NewLabelWithData(bsCommitMsg),
+		stat.upgradeProgress,
+	))
+	stat.cards = append(cards, statusCard)
+	return container.NewVBox(
+		statusCard,
+		container.NewGridWithColumns(3, cards...),
+	)
 }
 
 func main() {
 	status := &xinStatus{}
-	data := &Config{}
 	dataPath := path.Clean(path.Join(os.Getenv("HOME"), ".xin.json"))
-	err := data.Load(dataPath)
+	err := status.config.Load(dataPath)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	statusPKPath = data.PrivKeyPath
 
 	a := app.New()
 	w := a.NewWindow("xintray")
 
 	tabs := container.NewAppTabs(
-		container.NewTabItemWithIcon("Status", theme.ComputerIcon(), buildCards(data, status)),
+		container.NewTabItemWithIcon("Status", theme.ComputerIcon(), buildCards(status)),
 	)
 
 	status.tabs = tabs
 	status.log = widget.NewTextGrid()
 
-	err = doUpdate(data, status)
+	err = status.updateRepoInfo()
+	if err != nil {
+		status.log.SetText(err.Error())
+	}
+
+	err = status.updateHostInfo()
+	if err != nil {
+		status.log.SetText(err.Error())
+	}
 
 	go func() {
 		for {
-			log.Println("updating host info")
-			err = doUpdate(data, status)
+			err = status.updateRepoInfo()
+			if err != nil {
+				status.log.SetText(err.Error())
+			}
+
+			err = status.updateHostInfo()
 			if err != nil {
 				status.log.SetText(err.Error())
 			}
 			for _, s := range status.boundStrings {
 				s.Reload()
 			}
-			time.Sleep(1 * time.Minute)
+			for _, s := range status.boundBools {
+				s.Reload()
+			}
+			time.Sleep(3 * time.Second)
 		}
 	}()
 
-	for _, s := range data.Statuses {
+	for _, s := range status.config.Statuses {
 		tabs.Append(container.NewTabItem(s.Host, s.ToTable()))
 	}
 
@@ -265,6 +373,13 @@ func main() {
 				w.Show()
 			}))
 		desk.SetSystemTrayMenu(m)
+		go func() {
+			if status.uptodate() {
+				desk.SetSystemTrayIcon(theme.CheckButtonCheckedIcon())
+			} else {
+				desk.SetSystemTrayIcon(theme.CheckButtonIcon())
+			}
+		}()
 	}
 
 	status.log.SetText("starting...")

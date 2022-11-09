@@ -20,7 +20,7 @@
             src = ./.;
 
             vendorSha256 =
-              "sha256-0ff4WkOBW+RKDk6eQCXNMsrCqZ+oNxGLaBmvFS7u5JM=";
+              "sha256-FQsILSY4xC2byrg7bMMTJ/HOuq7hMKIffsDYbfm+h6E=";
             proxyVendor = true;
 
             nativeBuildInputs = with pkgs; [ pkg-config ];
