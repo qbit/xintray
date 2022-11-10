@@ -23,7 +23,13 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-var commitCache = make(map[string]string)
+var commitCache = make(map[string]commit)
+
+type commit struct {
+	hash    string
+	date    time.Time
+	message string
+}
 
 type xinStatus struct {
 	debug           bool
@@ -32,15 +38,14 @@ type xinStatus struct {
 	boundStrings    []binding.ExternalString
 	boundBools      []binding.ExternalBool
 	log             *widget.TextGrid
-	repoCommitHash  string
-	repoCommitMsg   string
+	repoCommit      commit
 	config          Config
 	upgradeProgress *widget.ProgressBar
 }
 
 type Status struct {
 	card              *widget.Card
-	commitMessage     string
+	commit            commit
 	client            *ssh.Client
 	clientEstablished bool
 
@@ -52,6 +57,44 @@ type Status struct {
 	Port                  int32  `json:"port"`
 }
 
+type Config struct {
+	Statuses    []*Status `json:"statuses"`
+	Repo        string    `json:"repo"`
+	PrivKeyPath string    `json:"priv_key_path"`
+}
+
+func (c *commit) getInfo(repo string) error {
+	msgCmd := exec.Command("git", "log", "--format=%B", "-n", "1", c.hash)
+	msgCmd.Dir = repo
+	msg, err := msgCmd.Output()
+	if err != nil {
+		return err
+	}
+	c.message = trim(msg)
+
+	dateCmd := exec.Command("git", "log", "--format=%ci", c.hash)
+	dateCmd.Dir = repo
+	d, err := dateCmd.Output()
+	if err != nil {
+		return err
+	}
+	dateStr := trim(d)
+	date, err := time.Parse("2006-01-01 15:04:05 -0700", dateStr)
+	if err != nil {
+		return err
+	}
+
+	c.date = date
+
+	return nil
+}
+
+func NewCommit(c string) *commit {
+	return &commit{
+		hash: c,
+	}
+}
+
 func trim(b []byte) string {
 	head := bytes.Split(b, []byte("\n"))
 	return string(head[0])
@@ -61,25 +104,26 @@ func (x *xinStatus) uptodate() bool {
 	return x.upgradeProgress.Value == float64(len(x.config.Statuses))
 }
 
-func (x *xinStatus) getCommitInfo(c string) string {
+func (x *xinStatus) getCommit(c string) (*commit, error) {
+	commit := &commit{
+		hash: c,
+	}
 	if c == "DIRTY" {
-		return c
+		return commit, nil
 	}
 
-	if commitCache[c] != "" {
-		return commitCache[c]
+	if commit, ok := commitCache[c]; ok {
+		return &commit, nil
+	} else {
+		commit := NewCommit(c)
+		err := commit.getInfo(x.config.Repo)
+		if err != nil {
+			return nil, err
+		}
+		commitCache[c] = *commit
 	}
 
-	msgCmd := exec.Command("git", "log", "--format=%B", "-n", "1", c)
-	msgCmd.Dir = x.config.Repo
-	msg, err := msgCmd.Output()
-	if err != nil {
-		x.Log(err.Error())
-	}
-
-	strMsg := trim(msg)
-	commitCache[c] = strMsg
-	return strMsg
+	return commit, nil
 }
 
 func (x *xinStatus) updateRepoInfo() error {
@@ -90,13 +134,8 @@ func (x *xinStatus) updateRepoInfo() error {
 		return err
 	}
 
-	x.repoCommitHash = trim(currentRev)
-
-	if commitCache[x.repoCommitHash] != "" {
-		x.repoCommitMsg = commitCache[x.repoCommitHash]
-	} else {
-		x.repoCommitMsg = x.getCommitInfo(x.repoCommitHash)
-	}
+	commit, err := x.getCommit(trim(currentRev))
+	x.repoCommit = *commit
 
 	return nil
 }
@@ -167,7 +206,7 @@ func (x *xinStatus) updateHostInfo() error {
 			continue
 		}
 
-		if s.ConfigurationRevision != x.repoCommitHash {
+		if s.ConfigurationRevision != x.repoCommit.hash {
 			s.card.Subtitle = fmt.Sprintf("%.8s", s.ConfigurationRevision)
 			upToDateCount = upToDateCount - 1
 		} else {
@@ -175,7 +214,12 @@ func (x *xinStatus) updateHostInfo() error {
 		}
 		s.card.Refresh()
 
-		s.commitMessage = x.getCommitInfo(s.ConfigurationRevision)
+		commit, err := x.getCommit(s.ConfigurationRevision)
+		if err != nil {
+			x.Log(err.Error())
+			continue
+		}
+		s.commit = *commit
 	}
 
 	x.upgradeProgress.SetValue(float64(upToDateCount))
@@ -194,12 +238,6 @@ func (x *xinStatus) Log(s string) {
 			text,
 		}, "\n"))
 	*/
-}
-
-type Config struct {
-	Statuses    []*Status `json:"statuses"`
-	Repo        string    `json:"repo"`
-	PrivKeyPath string    `json:"priv_key_path"`
 }
 
 func (c *Config) Load(file string) error {
@@ -265,7 +303,7 @@ func buildCards(stat *xinStatus) fyne.CanvasObject {
 		return stat.config.Statuses[i].Host < stat.config.Statuses[j].Host
 	})
 	for _, s := range stat.config.Statuses {
-		commitBStr := binding.BindString(&s.commitMessage)
+		commitBStr := binding.BindString(&s.commit.message)
 		bsl := widget.NewLabelWithData(commitBStr)
 
 		restartBBool := binding.BindBool(&s.NeedsRestart)
@@ -295,8 +333,8 @@ func buildCards(stat *xinStatus) fyne.CanvasObject {
 			stat.upgradeProgress.Value, stat.upgradeProgress.Max)
 	}
 
-	bsCommitMsg := binding.BindString(&stat.repoCommitMsg)
-	bsCommitHash := binding.BindString(&stat.repoCommitHash)
+	bsCommitMsg := binding.BindString(&stat.repoCommit.message)
+	bsCommitHash := binding.BindString(&stat.repoCommit.hash)
 
 	stat.boundStrings = append(stat.boundStrings, bsCommitMsg)
 	stat.boundStrings = append(stat.boundStrings, bsCommitHash)
@@ -335,11 +373,6 @@ func main() {
 		status.log.SetText(err.Error())
 	}
 
-	err = status.updateHostInfo()
-	if err != nil {
-		status.log.SetText(err.Error())
-	}
-
 	go func() {
 		for {
 			err = status.updateRepoInfo()
@@ -368,16 +401,17 @@ func main() {
 	tabs.SetTabLocation(container.TabLocationLeading)
 
 	if desk, ok := a.(desktop.App); ok {
+		iconImg := buildImage(status)
 		m := fyne.NewMenu("xintray",
 			fyne.NewMenuItem("Show", func() {
 				w.Show()
 			}))
 		desk.SetSystemTrayMenu(m)
+		desk.SetSystemTrayIcon(iconImg)
 		go func() {
-			if status.uptodate() {
-				desk.SetSystemTrayIcon(theme.CheckButtonCheckedIcon())
-			} else {
-				desk.SetSystemTrayIcon(theme.CheckButtonIcon())
+			for {
+				desk.SetSystemTrayIcon(buildImage(status))
+				time.Sleep(3 * time.Second)
 			}
 		}()
 	}
@@ -386,6 +420,7 @@ func main() {
 
 	w.SetContent(container.NewAppTabs(
 		container.NewTabItem("Hosts", tabs),
+		container.NewTabItem("Config", container.NewMax(widget.NewCard("Config", "", nil))),
 		container.NewTabItem("Logs", container.NewMax(status.log)),
 	))
 	w.SetCloseIntercept(func() {
