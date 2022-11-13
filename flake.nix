@@ -25,9 +25,11 @@
 
             nativeBuildInputs = with pkgs; [ pkg-config ];
             buildInputs = with pkgs; [
+              git
               glfw
               libGL
               libGLU
+              openssh
               pkg-config
               xlibsWrapper
               xorg.libXcursor

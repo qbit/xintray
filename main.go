@@ -79,7 +79,7 @@ func (c *commit) getInfo(repo string) error {
 		return err
 	}
 	dateStr := trim(d)
-	date, err := time.Parse("2006-01-01 15:04:05 -0700", dateStr)
+	date, err := time.Parse("2006-01-02 15:04:05 -0700", dateStr)
 	if err != nil {
 		return err
 	}
@@ -135,6 +135,9 @@ func (x *xinStatus) updateRepoInfo() error {
 	}
 
 	commit, err := x.getCommit(trim(currentRev))
+	if err != nil {
+		return err
+	}
 	x.repoCommit = *commit
 
 	return nil
