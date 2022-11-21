@@ -100,8 +100,18 @@ func trim(b []byte) string {
 	return string(head[0])
 }
 
+func (x *xinStatus) aliveCount() float64 {
+	alive := 0
+	for _, s := range x.config.Statuses {
+		if s.clientEstablished {
+			alive = alive + 1
+		}
+	}
+	return float64(alive)
+}
+
 func (x *xinStatus) uptodate() bool {
-	return x.upgradeProgress.Value == float64(len(x.config.Statuses))
+	return x.upgradeProgress.Value == x.aliveCount()
 }
 
 func (x *xinStatus) getCommit(c string) (*commit, error) {
@@ -330,7 +340,7 @@ func buildCards(stat *xinStatus) fyne.CanvasObject {
 
 	stat.upgradeProgress = widget.NewProgressBar()
 	stat.upgradeProgress.Min = 0
-	stat.upgradeProgress.Max = float64(len(stat.config.Statuses))
+	stat.upgradeProgress.Max = stat.aliveCount()
 	stat.upgradeProgress.TextFormatter = func() string {
 		return fmt.Sprintf("%.0f of %.0f hosts up-to-date",
 			stat.upgradeProgress.Value, stat.upgradeProgress.Max)
@@ -394,6 +404,7 @@ func main() {
 				s.Reload()
 			}
 			time.Sleep(3 * time.Second)
+			status.upgradeProgress.Max = status.aliveCount()
 		}
 	}()
 
@@ -403,6 +414,9 @@ func main() {
 
 	tabs.SetTabLocation(container.TabLocationLeading)
 
+	iconImg := buildImage(status)
+	a.SetIcon(iconImg)
+
 	if desk, ok := a.(desktop.App); ok {
 		iconImg := buildImage(status)
 		m := fyne.NewMenu("xintray",
@@ -411,9 +425,12 @@ func main() {
 			}))
 		desk.SetSystemTrayMenu(m)
 		desk.SetSystemTrayIcon(iconImg)
+		a.SetIcon(iconImg)
 		go func() {
 			for {
-				desk.SetSystemTrayIcon(buildImage(status))
+				img := buildImage(status)
+				desk.SetSystemTrayIcon(img)
+				a.SetIcon(img)
 				time.Sleep(3 * time.Second)
 			}
 		}()
