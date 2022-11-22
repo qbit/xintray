@@ -52,20 +52,15 @@ func (m *myIcon) Content() []byte {
 func buildImage(xin *xinStatus) *myIcon {
 	i := &myIcon{}
 
-	on, err := parseHexColor("#46d700")
+	on, err := parseHexColor("#92CAFF")
 	off, err := parseHexColor("#c1c1c1")
+	border, err := parseHexColor("#000000")
 
 	if err != nil {
 		log.Println(err)
 	}
 
 	i.data = image.NewRGBA(image.Rect(0, 0, width, height))
-	border := &color.RGBA{
-		R: 0x00,
-		G: 0x00,
-		B: 0x00,
-		A: 0xff,
-	}
 
 	aliveCount := int(xin.aliveCount())
 	utdCount := int(xin.uptodateCount())
