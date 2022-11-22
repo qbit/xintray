@@ -24,11 +24,11 @@ func parseHexColor(s string) (*color.RGBA, error) {
 }
 
 func isEdge(x, y int) bool {
-	if x == 0 || x == width {
+	if x == 0 || x == width-1 {
 		return true
 	}
 
-	if y == 0 || y == height {
+	if y == 0 || y == height-1 {
 		return true
 	}
 
@@ -52,7 +52,7 @@ func (m *myIcon) Content() []byte {
 func buildImage(xin *xinStatus) *myIcon {
 	i := &myIcon{}
 
-	u2d, err := parseHexColor("#46d700")
+	on, err := parseHexColor("#46d700")
 	off, err := parseHexColor("#c1c1c1")
 
 	if err != nil {
@@ -67,13 +67,20 @@ func buildImage(xin *xinStatus) *myIcon {
 		A: 0xff,
 	}
 
-	for y := 0; y < width; y++ {
-		for x := 0; x < height; x++ {
+	aliveCount := int(xin.aliveCount())
+	utdCount := int(xin.uptodateCount())
+	gridMark := 1
+	if aliveCount > 0 {
+		gridMark = int(height / aliveCount)
+	}
+
+	for x := 0; x < width; x++ {
+		for y := 0; y < height; y++ {
 			if isEdge(x, y) {
 				i.data.Set(x, y, border)
 			} else {
-				if xin.uptodate() {
-					i.data.Set(x, y, u2d)
+				if aliveCount > 0 && y < gridMark*utdCount {
+					i.data.Set(x, y, on)
 				} else {
 					i.data.Set(x, y, off)
 				}

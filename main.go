@@ -48,6 +48,7 @@ type Status struct {
 	commit            commit
 	client            *ssh.Client
 	clientEstablished bool
+	upToDate          bool
 
 	ConfigurationRevision string `json:"configurationRevision"`
 	NeedsRestart          bool   `json:"needs_restart"`
@@ -108,6 +109,16 @@ func (x *xinStatus) aliveCount() float64 {
 		}
 	}
 	return float64(alive)
+}
+
+func (x *xinStatus) uptodateCount() float64 {
+	utd := 0
+	for _, s := range x.config.Statuses {
+		if s.upToDate {
+			utd = utd + 1
+		}
+	}
+	return float64(utd)
 }
 
 func (x *xinStatus) uptodate() bool {
@@ -233,6 +244,11 @@ func (x *xinStatus) updateHostInfo() error {
 			continue
 		}
 		s.commit = *commit
+
+		s.upToDate = false
+		if s.commit == x.repoCommit {
+			s.upToDate = true
+		}
 	}
 
 	x.upgradeProgress.SetValue(float64(upToDateCount))
