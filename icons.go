@@ -53,7 +53,13 @@ func buildImage(xin *xinStatus) *myIcon {
 	i := &myIcon{}
 
 	on, err := parseHexColor("#92CAFF")
+	if err != nil {
+		log.Println(err)
+	}
 	off, err := parseHexColor("#c1c1c1")
+	if err != nil {
+		log.Println(err)
+	}
 	border, err := parseHexColor("#000000")
 
 	if err != nil {

@@ -32,7 +32,6 @@ type commit struct {
 }
 
 type xinStatus struct {
-	debug           bool
 	tabs            *container.AppTabs
 	cards           []fyne.CanvasObject
 	boundStrings    []binding.ExternalString
@@ -119,10 +118,6 @@ func (x *xinStatus) uptodateCount() float64 {
 		}
 	}
 	return float64(utd)
-}
-
-func (x *xinStatus) uptodate() bool {
-	return x.upgradeProgress.Value == x.aliveCount()
 }
 
 func (x *xinStatus) getCommit(c string) (*commit, error) {
