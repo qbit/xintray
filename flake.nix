@@ -1,7 +1,7 @@
 {
   description = "xintray: a status indicator that lives in the tray";
 
-  inputs.nixpkgs.url = "nixpkgs/nixos-22.05";
+  inputs.nixpkgs.url = "nixpkgs/nixos-22.11";
 
   outputs = { self, nixpkgs }:
     let
@@ -14,9 +14,9 @@
         let pkgs = nixpkgsFor.${system};
 
         in {
-          xintray = pkgs.buildGo118Module {
+          xintray = pkgs.buildGoModule {
             pname = "xintray";
-            version = "v0.1.0";
+            version = "v0.1.1";
             src = ./.;
 
             vendorSha256 =
