@@ -330,15 +330,20 @@ func buildCards(stat *xinStatus) fyne.CanvasObject {
 		commitBStr := binding.BindString(&s.commit.message)
 		bsl := widget.NewLabelWithData(commitBStr)
 
+		verBStr := binding.BindString(&s.NixosVersion)
+		bvl := widget.NewLabelWithData(verBStr)
+
 		restartBBool := binding.BindBool(&s.NeedsRestart)
 		bbl := widget.NewCheckWithData("Reboot", restartBBool)
 		bbl.Disable()
 
 		stat.boundStrings = append(stat.boundStrings, commitBStr)
+		stat.boundStrings = append(stat.boundStrings, verBStr)
 		stat.boundBools = append(stat.boundBools, restartBBool)
 
 		card := widget.NewCard(s.Host, "",
 			container.NewVBox(
+				container.NewHBox(bvl),
 				container.NewHBox(bbl),
 				container.NewHBox(bsl),
 			),
