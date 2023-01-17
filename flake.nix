@@ -16,11 +16,11 @@
         in {
           xintray = pkgs.buildGoModule {
             pname = "xintray";
-            version = "v0.1.4";
+            version = "v0.1.5";
             src = ./.;
 
             vendorSha256 =
-              "sha256-CQx15HqHqDLxbw66wv05efDZwJ4Xi8F6U866oUk3DvQ=";
+              "sha256-j/dpn2+a88ZzTXnQy3QpyTby37skQwkK4NG+aBeLeyc=";
             proxyVendor = true;
 
             nativeBuildInputs = with pkgs; [ pkg-config ];
@@ -31,7 +31,6 @@
               libGLU
               openssh
               pkg-config
-              xlibsWrapper
               xorg.libXcursor
               xorg.libXi
               xorg.libXinerama
@@ -59,7 +58,6 @@
 
               glfw
               pkg-config
-              xlibsWrapper
               xorg.libXcursor
               xorg.libXi
               xorg.libXinerama
