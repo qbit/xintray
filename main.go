@@ -172,7 +172,11 @@ func (x *xinStatus) updateRepoInfo() error {
 		if err = xml.NewDecoder(res.Body).Decode(&resp); err != nil {
 			return err
 		}
-		x.repoCommit = resp.LatestHash()
+		cmit, err := resp.LatestHash()
+		if err != nil {
+			return err
+		}
+		x.repoCommit = *cmit
 	}
 
 	return nil

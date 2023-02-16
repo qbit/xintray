@@ -5,6 +5,7 @@ go 1.17
 require (
 	fyne.io/fyne/v2 v2.3.1
 	golang.org/x/crypto v0.6.0
+	golang.org/x/net v0.6.0
 )
 
 require (
@@ -31,7 +32,6 @@ require (
 	github.com/yuin/goldmark v1.5.3 // indirect
 	golang.org/x/image v0.3.0 // indirect
 	golang.org/x/mobile v0.0.0-20221110043201-43a038452099 // indirect
-	golang.org/x/net v0.6.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

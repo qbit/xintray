@@ -2,9 +2,10 @@ package main
 
 import (
 	"encoding/xml"
-	"html"
 	"strings"
 	"time"
+
+	"golang.org/x/net/html"
 )
 
 type Feed struct {
@@ -51,11 +52,30 @@ type Feed struct {
 	} `xml:"entry"`
 }
 
-func (f *Feed) LatestHash() commit {
-	return commit{
+func (f *Feed) LatestHash() (*commit, error) {
+	doc, err := html.Parse(strings.NewReader(f.Entry[0].Content.Text))
+	if err != nil {
+		return nil, err
+	}
+
+	cmitMsg := ""
+	var h func(*html.Node)
+	h = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "pre" {
+			cmitMsg = n.FirstChild.Data
+			return
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			h(child)
+		}
+	}
+	h(doc)
+
+	return &commit{
 		hash: strings.Split(f.Entry[0].ID, "/")[1],
 		// TODO: use x/html to pull out the info?
-		message: html.UnescapeString(f.Entry[0].Content.Text),
-		date:    f.Entry[0].Updated,
-	}
+		message: cmitMsg,
+		//message: html.UnescapeString(f.Entry[0].Content.Text),
+		date: f.Entry[0].Updated,
+	}, nil
 }
