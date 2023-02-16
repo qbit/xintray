@@ -16,11 +16,11 @@
         in {
           xintray = pkgs.buildGoModule {
             pname = "xintray";
-            version = "v0.1.5";
+            version = "v0.1.6";
             src = ./.;
 
             vendorSha256 =
-              "sha256-j/dpn2+a88ZzTXnQy3QpyTby37skQwkK4NG+aBeLeyc=";
+              "sha256-MKMAV5UNB6bl6/qe7Xb9+OIczfoPrXeHVqcDIaKDHms=";
             proxyVendor = true;
 
             nativeBuildInputs = with pkgs; [ pkg-config ];

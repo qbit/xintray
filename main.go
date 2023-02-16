@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -61,6 +63,7 @@ type Config struct {
 	Statuses    []*Status `json:"statuses"`
 	Repo        string    `json:"repo"`
 	PrivKeyPath string    `json:"priv_key_path"`
+	FlakeRSS    string    `json:"flake_rss"`
 }
 
 func (c *commit) getInfo(repo string) error {
@@ -143,18 +146,34 @@ func (x *xinStatus) getCommit(c string) (*commit, error) {
 }
 
 func (x *xinStatus) updateRepoInfo() error {
-	revCmd := exec.Command("git", "rev-parse", "HEAD")
-	revCmd.Dir = x.config.Repo
-	currentRev, err := revCmd.Output()
-	if err != nil {
-		return err
-	}
+	switch {
+	case (x.config.Repo != "" && x.config.FlakeRSS == ""):
+		revCmd := exec.Command("git", "rev-parse", "HEAD")
+		revCmd.Dir = x.config.Repo
+		currentRev, err := revCmd.Output()
+		if err != nil {
+			return err
+		}
 
-	commit, err := x.getCommit(trim(currentRev))
-	if err != nil {
-		return err
+		commit, err := x.getCommit(trim(currentRev))
+		if err != nil {
+			return err
+		}
+		x.repoCommit = *commit
+	default:
+		resp := &Feed{}
+		res, err := http.Get(x.config.FlakeRSS)
+		if err != nil {
+			return err
+		}
+
+		defer res.Body.Close()
+
+		if err = xml.NewDecoder(res.Body).Decode(&resp); err != nil {
+			return err
+		}
+		x.repoCommit = resp.LatestHash()
 	}
-	x.repoCommit = *commit
 
 	return nil
 }

@@ -3,12 +3,12 @@ module suah.dev/xintray
 go 1.17
 
 require (
-	fyne.io/fyne/v2 v2.3.0
-	golang.org/x/crypto v0.5.0
+	fyne.io/fyne/v2 v2.3.1
+	golang.org/x/crypto v0.6.0
 )
 
 require (
-	fyne.io/systray v1.10.1-0.20221115204952-d16a6177e6f1 // indirect
+	fyne.io/systray v1.10.1-0.20230207085535-4a244dbb9d03 // indirect
 	github.com/benoitkugler/textlayout v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fredbi/uri v1.0.0 // indirect
@@ -31,9 +31,9 @@ require (
 	github.com/yuin/goldmark v1.5.3 // indirect
 	golang.org/x/image v0.3.0 // indirect
 	golang.org/x/mobile v0.0.0-20221110043201-43a038452099 // indirect
-	golang.org/x/net v0.5.0 // indirect
-	golang.org/x/sys v0.4.0 // indirect
-	golang.org/x/text v0.6.0 // indirect
+	golang.org/x/net v0.6.0 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/js/dom v0.0.0-20221001195520-26252dedbe70 // indirect
 )
