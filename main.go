@@ -264,7 +264,7 @@ func (x *xinStatus) updateHostInfo() error {
 		s.commit = *commit
 
 		s.upToDate = false
-		if s.commit == x.repoCommit {
+		if s.commit.hash == x.repoCommit.hash {
 			s.upToDate = true
 		}
 	}
