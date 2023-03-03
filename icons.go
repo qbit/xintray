@@ -61,7 +61,10 @@ func buildImage(xin *xinStatus) *myIcon {
 		log.Println(err)
 	}
 	border, err := parseHexColor("#000000")
-
+	if err != nil {
+		log.Println(err)
+	}
+	rebootColor, err := parseHexColor("#DE3163")
 	if err != nil {
 		log.Println(err)
 	}
@@ -81,7 +84,11 @@ func buildImage(xin *xinStatus) *myIcon {
 				i.data.Set(x, y, border)
 			} else {
 				if aliveCount > 0 && y < gridMark*utdCount {
-					i.data.Set(x, y, on)
+					if !xin.hasReboot {
+						i.data.Set(x, y, rebootColor)
+					} else {
+						i.data.Set(x, y, on)
+					}
 				} else {
 					i.data.Set(x, y, off)
 				}

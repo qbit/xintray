@@ -1,7 +1,7 @@
 {
   description = "xintray: a status indicator that lives in the tray";
 
-  inputs.nixpkgs.url = "nixpkgs/nixos-22.11";
+  inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
 
   outputs = { self, nixpkgs }:
     let
@@ -14,9 +14,9 @@
         let pkgs = nixpkgsFor.${system};
 
         in {
-          xintray = pkgs.buildGoModule {
+          xintray = pkgs.buildGo120Module {
             pname = "xintray";
-            version = "v0.1.8";
+            version = "v0.1.9";
             src = ./.;
 
             vendorSha256 =
@@ -48,11 +48,11 @@
           default = pkgs.mkShell {
             shellHook = ''
               PS1='\u@\h:\@; '
-              echo "Go `${pkgs.go}/bin/go version`"
+              echo "Go `${pkgs.go_1_20}/bin/go version`"
             '';
             buildInputs = with pkgs; [
               git
-              go
+              go_1_20
               gopls
               go-tools
 

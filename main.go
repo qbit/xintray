@@ -42,6 +42,7 @@ type xinStatus struct {
 	repoCommit      commit
 	config          Config
 	upgradeProgress *widget.ProgressBar
+	hasReboot       bool
 }
 
 type Status struct {
@@ -108,6 +109,9 @@ func (x *xinStatus) aliveCount() float64 {
 	for _, s := range x.config.Statuses {
 		if s.clientEstablished {
 			alive = alive + 1
+			if s.NeedsRestart {
+				x.hasReboot = true
+			}
 		}
 	}
 	return float64(alive)
