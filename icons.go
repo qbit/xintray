@@ -84,7 +84,7 @@ func buildImage(xin *xinStatus) *myIcon {
 				i.data.Set(x, y, border)
 			} else {
 				if aliveCount > 0 && y < gridMark*utdCount {
-					if !xin.hasReboot {
+					if xin.hasReboot {
 						i.data.Set(x, y, rebootColor)
 					} else {
 						i.data.Set(x, y, on)
