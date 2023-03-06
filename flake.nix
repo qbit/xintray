@@ -16,7 +16,7 @@
         in {
           xintray = pkgs.buildGo120Module {
             pname = "xintray";
-            version = "v0.1.9";
+            version = "v0.1.10";
             src = ./.;
 
             vendorSha256 =
