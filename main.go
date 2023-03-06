@@ -106,6 +106,7 @@ func trim(b []byte) string {
 
 func (x *xinStatus) aliveCount() float64 {
 	alive := 0
+	x.hasReboot = false
 	for _, s := range x.config.Statuses {
 		if s.clientEstablished {
 			alive = alive + 1
