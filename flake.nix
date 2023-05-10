@@ -48,6 +48,7 @@
           default = pkgs.mkShell {
             shellHook = ''
               PS1='\u@\h:\@; '
+              nix run github:qbit/xin#flake-warn
               echo "Go `${pkgs.go_1_20}/bin/go version`"
             '';
             buildInputs = with pkgs; [
