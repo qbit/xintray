@@ -16,11 +16,11 @@
         in {
           xintray = pkgs.buildGo120Module {
             pname = "xintray";
-            version = "v0.1.12";
+            version = "v0.1.13";
             src = ./.;
 
             vendorHash =
-              "sha256-+jVpoEJERT+RSNRLDKw3nu7ksQe555p9ZPaDx3lDH50=";
+              "sha256-mp9e0Ed2bvyyqbQgnmWhS1Tb341iW8bJdlxNcjTG4Vo=";
             proxyVendor = true;
 
             nativeBuildInputs = with pkgs; [ pkg-config ];
@@ -65,6 +65,8 @@
               xorg.libXrandr
               xorg.libXxf86vm
               xorg.xinput
+
+              go-font
             ];
           };
         });

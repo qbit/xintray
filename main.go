@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -56,6 +57,7 @@ type Status struct {
 	NeedsRestart          bool   `json:"needs_restart"`
 	NixosVersion          string `json:"nixosVersion"`
 	NixpkgsRevision       string `json:"nixpkgsRevision"`
+	SystemDiff            string `json:"system_diff"`
 	Host                  string `json:"host"`
 	Port                  int32  `json:"port"`
 }
@@ -303,48 +305,71 @@ func (c *Config) Load(file string) error {
 
 func (s *Status) ToTable() *widget.Table {
 	t := widget.NewTable(
+		// Length
 		func() (int, int) {
-			return 4, 2
+			return 5, 2
 		},
+		// CreateCell
 		func() fyne.CanvasObject {
-			return widget.NewLabel("")
+			//ct := container.NewScroll(container.NewMax(widget.NewLabel("")))
+			ct := container.NewMax(container.NewVScroll(widget.NewLabel("")))
+			//ct := container.NewMax(widget.NewLabel(""))
+			return ct
 		},
+		// UpdateCell
 		func(i widget.TableCellID, o fyne.CanvasObject) {
+			ctnr := o.(*fyne.Container)
+			content := ctnr.Objects[0].(*container.Scroll).Content.(*widget.Label)
 			if i.Col == 0 {
 				switch i.Row {
 				case 0:
-					o.(*widget.Label).SetText("NixOS Version")
+					content.SetText("NixOS Version")
 				case 1:
-					o.(*widget.Label).SetText("Nixpkgs Revision")
+					content.SetText("NixPkgs Revision")
 				case 2:
-					o.(*widget.Label).SetText("Configuration Revision")
+					content.SetText("Configuration Revision")
 				case 3:
-					o.(*widget.Label).SetText("Restart?")
+					content.SetText("Restart?")
+				case 4:
+					content.SetText("System Diff")
 				}
 			}
 			if i.Col == 1 {
 				switch i.Row {
 				case 0:
-					o.(*widget.Label).SetText(s.NixosVersion)
+					content.SetText(s.NixosVersion)
 				case 1:
-					o.(*widget.Label).SetText(s.NixpkgsRevision)
+					content.SetText(s.NixpkgsRevision)
 				case 2:
-					o.(*widget.Label).SetText(s.ConfigurationRevision)
+					content.SetText(s.ConfigurationRevision)
 				case 3:
 					str := "No"
 					if s.NeedsRestart {
 						str = "Yes"
 					}
-					o.(*widget.Label).SetText(str)
+					content.SetText(str)
+				case 4:
+					text, err := base64.StdEncoding.DecodeString(s.SystemDiff)
+					if err != nil {
+						fmt.Println("decode error:", err)
+						return
+					}
+					content.SetText(string(text))
 				}
+
 			}
 		},
+		// OnSelected
+		// func (i widget.TableCellID) {}
+		// OnUnselected
+		// func (i widget.TableCellID) {}
 	)
 
 	t.Refresh()
 
-	t.SetColumnWidth(0, 200.0)
-	t.SetColumnWidth(1, 33.0)
+	t.SetColumnWidth(0, 300.0)
+	t.SetColumnWidth(1, 600.0)
+	t.SetRowHeight(4, 600.0)
 
 	return t
 }
@@ -416,6 +441,7 @@ func main() {
 	}
 
 	a := app.New()
+	a.Settings().SetTheme(&xinTheme{})
 	w := a.NewWindow("xintray")
 
 	ctrlQ := &desktop.CustomShortcut{KeyName: fyne.KeyQ, Modifier: fyne.KeyModifierControl}
