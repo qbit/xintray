@@ -14,31 +14,46 @@
         let pkgs = nixpkgsFor.${system};
 
         in {
-          xintray = pkgs.buildGo120Module {
-            pname = "xintray";
-            version = "v0.1.13";
-            src = ./.;
+          xintray = with pkgs;
+            buildGo120Module rec {
+              pname = "xintray";
+              version = "v0.1.13";
+              src = ./.;
 
-            vendorHash =
-              "sha256-mp9e0Ed2bvyyqbQgnmWhS1Tb341iW8bJdlxNcjTG4Vo=";
-            proxyVendor = true;
+              vendorHash =
+                "sha256-mp9e0Ed2bvyyqbQgnmWhS1Tb341iW8bJdlxNcjTG4Vo=";
+              proxyVendor = true;
 
-            nativeBuildInputs = with pkgs; [ pkg-config ];
-            buildInputs = with pkgs; [
-              git
-              glfw
-              libGL
-              libGLU
-              openssh
-              pkg-config
-              xorg.libXcursor
-              xorg.libXi
-              xorg.libXinerama
-              xorg.libXrandr
-              xorg.libXxf86vm
-              xorg.xinput
-            ];
-          };
+              nativeBuildInputs = [ pkg-config copyDesktopItems ];
+              buildInputs = [
+                git
+                glfw
+                libGL
+                libGLU
+                openssh
+                pkg-config
+                xorg.libXcursor
+                xorg.libXi
+                xorg.libXinerama
+                xorg.libXrandr
+                xorg.libXxf86vm
+                xorg.xinput
+              ];
+
+              desktopItems = [
+                (makeDesktopItem {
+                  name = "Xin Tray";
+                  exec = pname;
+                  icon = pname;
+                  desktopName = pname;
+                })
+              ];
+
+              postInstall = ''
+                mkdir -p $out/share/
+                cp -r icons $out/share/
+              '';
+            };
         });
 
       defaultPackage = forAllSystems (system: self.packages.${system}.xintray);
