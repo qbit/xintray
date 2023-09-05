@@ -17,7 +17,7 @@
           xintray = with pkgs;
             buildGo120Module rec {
               pname = "xintray";
-              version = "v0.1.14";
+              version = "v0.1.15";
               src = ./.;
 
               vendorHash =
