@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -295,7 +294,7 @@ func (x *xinStatus) Log(s string) {
 }
 
 func (c *Config) Load(file string) error {
-	data, err := ioutil.ReadFile(file)
+	data, err := os.ReadFile(file)
 	if err != nil {
 		return err
 	}
@@ -312,7 +311,7 @@ func (s *Status) ToTable() *widget.Table {
 		// CreateCell
 		func() fyne.CanvasObject {
 			//ct := container.NewScroll(container.NewMax(widget.NewLabel("")))
-			ct := container.NewMax(container.NewVScroll(widget.NewLabel("")))
+			ct := container.NewStack(container.NewVScroll(widget.NewLabel("")))
 			//ct := container.NewMax(widget.NewLabel(""))
 			return ct
 		},
@@ -519,8 +518,8 @@ func main() {
 
 	w.SetContent(container.NewAppTabs(
 		container.NewTabItem("Hosts", tabs),
-		container.NewTabItem("Config", container.NewMax(widget.NewCard("Config", "", nil))),
-		container.NewTabItem("Logs", container.NewMax(status.log)),
+		container.NewTabItem("Config", container.NewStack(widget.NewCard("Config", "", nil))),
+		container.NewTabItem("Logs", container.NewStack(status.log)),
 	))
 	w.SetCloseIntercept(func() {
 		w.Hide()
