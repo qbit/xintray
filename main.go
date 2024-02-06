@@ -59,6 +59,7 @@ type Status struct {
 	SystemDiff            string `json:"system_diff"`
 	Host                  string `json:"host"`
 	Port                  int32  `json:"port"`
+	Uname                 string `json:"uname_a"`
 }
 
 type Config struct {
@@ -306,7 +307,7 @@ func (s *Status) ToTable() *widget.Table {
 	t := widget.NewTable(
 		// Length
 		func() (int, int) {
-			return 5, 2
+			return 6, 2
 		},
 		// CreateCell
 		func() fyne.CanvasObject {
@@ -326,10 +327,12 @@ func (s *Status) ToTable() *widget.Table {
 				case 1:
 					content.SetText("NixPkgs Revision")
 				case 2:
-					content.SetText("Configuration Revision")
+					content.SetText("Uname")
 				case 3:
-					content.SetText("Restart?")
+					content.SetText("Configuration Revision")
 				case 4:
+					content.SetText("Restart?")
+				case 5:
 					content.SetText("System Diff")
 				}
 			}
@@ -340,14 +343,16 @@ func (s *Status) ToTable() *widget.Table {
 				case 1:
 					content.SetText(s.NixpkgsRevision)
 				case 2:
-					content.SetText(s.ConfigurationRevision)
+					content.SetText(s.Uname)
 				case 3:
+					content.SetText(s.ConfigurationRevision)
+				case 4:
 					str := "No"
 					if s.NeedsRestart {
 						str = "Yes"
 					}
 					content.SetText(str)
-				case 4:
+				case 5:
 					text, err := base64.StdEncoding.DecodeString(s.SystemDiff)
 					if err != nil {
 						fmt.Println("decode error:", err)
@@ -368,7 +373,7 @@ func (s *Status) ToTable() *widget.Table {
 
 	t.SetColumnWidth(0, 300.0)
 	t.SetColumnWidth(1, 600.0)
-	t.SetRowHeight(4, 600.0)
+	t.SetRowHeight(5, 600.0)
 
 	return t
 }
