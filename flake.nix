@@ -15,7 +15,7 @@
 
         in {
           xintray = with pkgs;
-            buildGo120Module rec {
+            buildGoModule rec {
               pname = "xintray";
               version = "v0.1.18";
               src = ./.;
@@ -64,11 +64,11 @@
             shellHook = ''
               PS1='\u@\h:\@; '
               nix run github:qbit/xin#flake-warn
-              echo "Go `${pkgs.go_1_20}/bin/go version`"
+              echo "Go `${pkgs.go}/bin/go version`"
             '';
             buildInputs = with pkgs; [
               git
-              go_1_20
+              go
               gopls
               go-tools
 
