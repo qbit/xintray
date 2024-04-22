@@ -60,6 +60,7 @@ type Status struct {
 	Host                  string `json:"host"`
 	Port                  int32  `json:"port"`
 	Uname                 string `json:"uname_a"`
+	Uptime                string `json:"uptime"`
 }
 
 type Config struct {
@@ -307,7 +308,7 @@ func (s *Status) ToTable() *widget.Table {
 	t := widget.NewTable(
 		// Length
 		func() (int, int) {
-			return 6, 2
+			return 7, 2
 		},
 		// CreateCell
 		func() fyne.CanvasObject {
@@ -329,10 +330,12 @@ func (s *Status) ToTable() *widget.Table {
 				case 2:
 					content.SetText("Uname")
 				case 3:
-					content.SetText("Configuration Revision")
+					content.SetText("Uptime")
 				case 4:
-					content.SetText("Restart?")
+					content.SetText("Configuration Revision")
 				case 5:
+					content.SetText("Restart?")
+				case 6:
 					content.SetText("System Diff")
 				}
 			}
@@ -345,14 +348,16 @@ func (s *Status) ToTable() *widget.Table {
 				case 2:
 					content.SetText(s.Uname)
 				case 3:
-					content.SetText(s.ConfigurationRevision)
+					content.SetText(s.Uptime)
 				case 4:
+					content.SetText(s.ConfigurationRevision)
+				case 5:
 					str := "No"
 					if s.NeedsRestart {
 						str = "Yes"
 					}
 					content.SetText(str)
-				case 5:
+				case 6:
 					text, err := base64.StdEncoding.DecodeString(s.SystemDiff)
 					if err != nil {
 						fmt.Println("decode error:", err)
@@ -373,7 +378,7 @@ func (s *Status) ToTable() *widget.Table {
 
 	t.SetColumnWidth(0, 300.0)
 	t.SetColumnWidth(1, 600.0)
-	t.SetRowHeight(5, 600.0)
+	t.SetRowHeight(6, 600.0)
 
 	return t
 }
@@ -390,17 +395,22 @@ func buildCards(stat *xinStatus) fyne.CanvasObject {
 		verBStr := binding.BindString(&s.NixosVersion)
 		bvl := widget.NewLabelWithData(verBStr)
 
+		uptimeBStr := binding.BindString(&s.Uptime)
+		uvl := widget.NewLabelWithData(uptimeBStr)
+
 		restartBBool := binding.BindBool(&s.NeedsRestart)
 		bbl := widget.NewCheckWithData("Reboot", restartBBool)
 		bbl.Disable()
 
 		stat.boundStrings = append(stat.boundStrings, commitBStr)
 		stat.boundStrings = append(stat.boundStrings, verBStr)
+		stat.boundStrings = append(stat.boundStrings, uptimeBStr)
 		stat.boundBools = append(stat.boundBools, restartBBool)
 
 		card := widget.NewCard(s.Host, "",
 			container.NewVBox(
 				container.NewHBox(bvl),
+				container.NewHBox(uvl),
 				container.NewHBox(bbl),
 				container.NewHBox(bsl),
 			),

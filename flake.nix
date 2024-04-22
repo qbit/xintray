@@ -71,6 +71,7 @@
               go
               gopls
               go-tools
+              nilaway
 
               glfw
               pkg-config
