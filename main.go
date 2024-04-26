@@ -25,7 +25,9 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-var commitCache = make(map[string]commit)
+var (
+	commitCache = make(map[string]commit)
+)
 
 type commit struct {
 	hash    string
@@ -104,7 +106,10 @@ func NewCommit(c string) *commit {
 
 func trim(b []byte) string {
 	head := bytes.Split(b, []byte("\n"))
-	return string(head[0])
+	if head != nil {
+		return string(head[0])
+	}
+	return ""
 }
 
 func (x *xinStatus) aliveCount() float64 {
@@ -173,6 +178,9 @@ func (x *xinStatus) updateRepoInfo() error {
 		res, err := http.Get(x.config.FlakeRSS)
 		if err != nil {
 			return err
+		}
+		if res == nil {
+			return fmt.Errorf("invalid response")
 		}
 
 		defer res.Body.Close()
@@ -447,6 +455,7 @@ func buildCards(stat *xinStatus) fyne.CanvasObject {
 }
 
 func main() {
+	log.SetPrefix("xintray: ")
 	status := &xinStatus{}
 	dataPath := path.Clean(path.Join(os.Getenv("HOME"), ".xin.json"))
 	err := status.config.Load(dataPath)
@@ -457,6 +466,9 @@ func main() {
 	a := app.New()
 	a.Settings().SetTheme(&xinTheme{})
 	w := a.NewWindow("xintray")
+	if w == nil {
+		log.Fatalln("unable to create window")
+	}
 
 	ctrlQ := &desktop.CustomShortcut{KeyName: fyne.KeyQ, Modifier: fyne.KeyModifierControl}
 	ctrlW := &desktop.CustomShortcut{KeyName: fyne.KeyW, Modifier: fyne.KeyModifierControl}

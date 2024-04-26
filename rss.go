@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/xml"
+	"fmt"
 	"strings"
 	"time"
 
@@ -70,9 +71,15 @@ func (f *Feed) LatestHash() (*commit, error) {
 		}
 	}
 	h(doc)
+	hashParts := strings.Split(f.Entry[0].ID, "/")
+	if len(hashParts) != 2 {
+		return nil, fmt.Errorf("invalid hash")
+	}
+
+	hash := hashParts[1]
 
 	return &commit{
-		hash: strings.Split(f.Entry[0].ID, "/")[1],
+		hash: hash,
 		// TODO: use x/html to pull out the info?
 		message: cmitMsg,
 		//message: html.UnescapeString(f.Entry[0].Content.Text),
