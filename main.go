@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -45,10 +46,12 @@ type xinStatus struct {
 	config          Config
 	upgradeProgress *widget.ProgressBar
 	hasReboot       bool
+	window          fyne.Window
 }
 
 type Status struct {
 	card              *widget.Card
+	buttonBox         *fyne.Container
 	commit            commit
 	client            *ssh.Client
 	clientEstablished bool
@@ -63,6 +66,54 @@ type Status struct {
 	Port                  int32  `json:"port"`
 	Uname                 string `json:"uname_a"`
 	Uptime                string `json:"uptime"`
+}
+
+func (s *Status) RunCmd(cmd string, x *xinStatus) error {
+	khFile := path.Clean(path.Join(os.Getenv("HOME"), ".ssh/known_hosts"))
+	hostKeyCB, err := knownhosts.New(khFile)
+	if err != nil {
+		return fmt.Errorf("can't parse %q: %q", khFile, err)
+	}
+
+	key, err := os.ReadFile(x.config.PrivKeyPath)
+	if err != nil {
+		return fmt.Errorf("can't load key %q: %q", x.config.PrivKeyPath, err)
+	}
+
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return fmt.Errorf("can't parse key: %q", err)
+	}
+
+	sshConf := &ssh.ClientConfig{
+		User:              "root",
+		HostKeyAlgorithms: []string{"ssh-ed25519"},
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		Timeout:         2 * time.Second,
+		HostKeyCallback: hostKeyCB,
+	}
+
+	ds := fmt.Sprintf("%s:%d", s.Host, s.Port)
+
+	s.client, err = ssh.Dial("tcp", ds, sshConf)
+	if err != nil {
+		return err
+	}
+
+	session, err := s.client.NewSession()
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+
+	_, err = session.Output(cmd)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 type Config struct {
@@ -227,6 +278,7 @@ func (x *xinStatus) updateHostInfo() error {
 
 	upToDateCount := len(x.config.Statuses)
 	for _, s := range x.config.Statuses {
+		s := s
 		var err error
 		ds := fmt.Sprintf("%s:%d", s.Host, s.Port)
 		if !s.clientEstablished {
@@ -239,6 +291,41 @@ func (x *xinStatus) updateHostInfo() error {
 				continue
 			}
 			s.clientEstablished = true
+
+			restartButton := widget.NewButton("Reboot", func() {
+				go func() {
+					cnf := dialog.NewConfirm("Confirmation", fmt.Sprintf("Are you sure you want to reboot %q?", s.Host), func(doit bool) {
+						if doit {
+							err := s.RunCmd("xin reboot", x)
+							if err != nil {
+								log.Println(err)
+							}
+							s.client.Close()
+							s.clientEstablished = false
+						}
+					}, x.window)
+					cnf.SetDismissText("Cancel")
+					cnf.SetConfirmText("Ok")
+					cnf.Show()
+
+				}()
+			})
+
+			updateButton := widget.NewButton("Update", func() {
+				go func() {
+					err := s.RunCmd("xin update", x)
+					if err != nil {
+						log.Println(err)
+					}
+					s.client.Close()
+					s.clientEstablished = false
+				}()
+			})
+
+			if len(s.buttonBox.Objects) == 0 {
+				s.buttonBox.Add(restartButton)
+				s.buttonBox.Add(updateButton)
+			}
 		}
 
 		session, err := s.client.NewSession()
@@ -250,7 +337,7 @@ func (x *xinStatus) updateHostInfo() error {
 		}
 		defer session.Close()
 
-		output, err := session.Output("xin-status")
+		output, err := session.Output("xin status")
 		if err != nil {
 			x.Log(fmt.Sprintf("can't run command: %q", err))
 			upToDateCount = upToDateCount - 1
@@ -397,6 +484,8 @@ func buildCards(stat *xinStatus) fyne.CanvasObject {
 		return stat.config.Statuses[i].Host < stat.config.Statuses[j].Host
 	})
 	for _, s := range stat.config.Statuses {
+		// TODO: maybe not needed once loopvar stuff is solid?
+		s := s
 		commitBStr := binding.BindString(&s.commit.message)
 		bsl := widget.NewLabelWithData(commitBStr)
 
@@ -415,16 +504,20 @@ func buildCards(stat *xinStatus) fyne.CanvasObject {
 		stat.boundStrings = append(stat.boundStrings, uptimeBStr)
 		stat.boundBools = append(stat.boundBools, restartBBool)
 
+		buttonHBox := container.NewHBox()
+
 		card := widget.NewCard(s.Host, "",
 			container.NewVBox(
 				container.NewHBox(bvl),
 				container.NewHBox(uvl),
 				container.NewHBox(bbl),
 				container.NewHBox(bsl),
+				buttonHBox,
 			),
 		)
 
 		s.card = card
+		s.buttonBox = buttonHBox
 		cards = append(cards, card)
 		stat.cards = append(stat.cards, card)
 	}
@@ -469,6 +562,8 @@ func main() {
 	if w == nil {
 		log.Fatalln("unable to create window")
 	}
+
+	status.window = w
 
 	ctrlQ := &desktop.CustomShortcut{KeyName: fyne.KeyQ, Modifier: fyne.KeyModifierControl}
 	ctrlW := &desktop.CustomShortcut{KeyName: fyne.KeyW, Modifier: fyne.KeyModifierControl}
