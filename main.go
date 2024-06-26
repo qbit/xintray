@@ -121,6 +121,7 @@ type Config struct {
 	Repo        string    `json:"repo"`
 	PrivKeyPath string    `json:"priv_key_path"`
 	FlakeRSS    string    `json:"flake_rss"`
+	CIHost      string    `json:"ci_host"`
 }
 
 func (c *commit) getInfo(repo string) error {
@@ -325,6 +326,19 @@ func (x *xinStatus) updateHostInfo() error {
 			if len(s.buttonBox.Objects) == 0 {
 				s.buttonBox.Add(restartButton)
 				s.buttonBox.Add(updateButton)
+
+				log.Println(s.Host, x.config.CIHost)
+				if s.Host == x.config.CIHost {
+					ciStart := widget.NewButton("CI Start", func() {
+						go func() {
+							err := s.RunCmd("xin ci start", x)
+							if err != nil {
+								log.Println(err)
+							}
+						}()
+					})
+					s.buttonBox.Add(ciStart)
+				}
 			}
 		}
 
