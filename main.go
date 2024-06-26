@@ -337,7 +337,16 @@ func (x *xinStatus) updateHostInfo() error {
 							}
 						}()
 					})
+					ciUpdate := widget.NewButton("CI Update", func() {
+						go func() {
+							err := s.RunCmd("xin ci update", x)
+							if err != nil {
+								log.Println(err)
+							}
+						}()
+					})
 					s.buttonBox.Add(ciStart)
+					s.buttonBox.Add(ciUpdate)
 				}
 			}
 		}
