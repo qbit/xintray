@@ -68,6 +68,11 @@ type Status struct {
 	Uptime                string `json:"uptime"`
 }
 
+func (s *Status) SshClose() error {
+	s.clientEstablished = false
+	return s.client.Close()
+}
+
 func (s *Status) RunCmd(cmd string, x *xinStatus) error {
 	khFile := path.Clean(path.Join(os.Getenv("HOME"), ".ssh/known_hosts"))
 	hostKeyCB, err := knownhosts.New(khFile)
@@ -301,8 +306,7 @@ func (x *xinStatus) updateHostInfo() error {
 							if err != nil {
 								log.Println(err)
 							}
-							s.client.Close()
-							s.clientEstablished = false
+							s.SshClose()
 						}
 					}, x.window)
 					cnf.SetDismissText("Cancel")
@@ -318,8 +322,7 @@ func (x *xinStatus) updateHostInfo() error {
 					if err != nil {
 						log.Println(err)
 					}
-					s.client.Close()
-					s.clientEstablished = false
+					s.SshClose()
 				}()
 			})
 
@@ -327,7 +330,6 @@ func (x *xinStatus) updateHostInfo() error {
 				s.buttonBox.Add(restartButton)
 				s.buttonBox.Add(updateButton)
 
-				log.Println(s.Host, x.config.CIHost)
 				if s.Host == x.config.CIHost {
 					ciStart := widget.NewButton("CI Start", func() {
 						go func() {
@@ -364,6 +366,8 @@ func (x *xinStatus) updateHostInfo() error {
 		if err != nil {
 			x.Log(fmt.Sprintf("can't run command: %q", err))
 			upToDateCount = upToDateCount - 1
+			session.Close()
+			s.SshClose()
 			continue
 		}
 
