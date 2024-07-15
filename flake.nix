@@ -17,11 +17,10 @@
           xintray = with pkgs;
             buildGoModule rec {
               pname = "xintray";
-              version = "v0.2.0";
+              version = "v0.2.1";
               src = ./.;
 
-              vendorHash =
-                "sha256-VwV5GqrSu0+LZENKJnRoffZp+FJFPv+rJRbXyMJ3j4U=";
+              vendorHash = "sha256-5hb6nLx+5o65ziAXhuJpkSmseZNiCf16zduPRqiLLZ4=";
               proxyVendor = true;
 
               nativeBuildInputs = [ pkg-config copyDesktopItems ];
