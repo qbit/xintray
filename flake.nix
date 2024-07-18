@@ -37,6 +37,9 @@
                 xorg.libXrandr
                 xorg.libXxf86vm
                 xorg.xinput
+
+                wayland
+                libxkbcommon
               ];
 
               desktopItems = [
@@ -81,6 +84,9 @@
               xorg.libXxf86vm
               xorg.xinput
 
+              libxkbcommon
+              wayland
+              
               go-font
             ];
           };
