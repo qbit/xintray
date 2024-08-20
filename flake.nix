@@ -44,12 +44,14 @@
               ];
 
               buildPhase = ''
-                ${fyne}/bin/fyne build
+                ${fyne}/bin/fyne package
               '';
 
               installPhase = ''
-                mkdir -p $out/bin
-                cp xintray $out/bin/
+                mkdir -p $out
+                pkg="$PWD/xintray.tar.xz"
+                cd $out
+                tar --strip-components=1 -xvf $pkg
               '';
             };
         });
