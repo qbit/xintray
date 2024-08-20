@@ -1,0 +1,7 @@
+Website = "https://github.com/qbit/xintray"
+
+[Details]
+Icon = "xintray-logo.png"
+Name = "xintray"
+ID = "dev.suah.xintray"
+Version = "1.0.0"
