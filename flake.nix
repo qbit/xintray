@@ -25,6 +25,7 @@
 
               nativeBuildInputs = [ pkg-config copyDesktopItems ];
               buildInputs = [
+                fyne
                 git
                 glfw
                 libGL
@@ -42,18 +43,13 @@
                 libxkbcommon
               ];
 
-              desktopItems = [
-                (makeDesktopItem {
-                  name = "Xin Tray";
-                  exec = pname;
-                  icon = pname;
-                  desktopName = pname;
-                })
-              ];
+              buildPhase = ''
+                ${fyne}/bin/fyne build
+              '';
 
-              postInstall = ''
-                mkdir -p $out/share/
-                cp -r icons $out/share/
+              installPhase = ''
+                mkdir -p $out/bin
+                cp xintray $out/bin/
               '';
             };
         });
@@ -69,6 +65,7 @@
               echo "Go `${pkgs.go}/bin/go version`"
             '';
             buildInputs = with pkgs; [
+              fyne
               git
               go
               gopls
