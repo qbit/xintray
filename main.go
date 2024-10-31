@@ -47,6 +47,7 @@ type xinStatus struct {
 	upgradeProgress *widget.ProgressBar
 	hasReboot       bool
 	window          fyne.Window
+	ci              *Status
 }
 
 type Status struct {
@@ -331,24 +332,7 @@ func (x *xinStatus) updateHostInfo() error {
 				s.buttonBox.Add(updateButton)
 
 				if s.Host == x.config.CIHost {
-					ciStart := widget.NewButton("CI Start", func() {
-						go func() {
-							err := s.RunCmd("xin ci start", x)
-							if err != nil {
-								log.Println(err)
-							}
-						}()
-					})
-					ciUpdate := widget.NewButton("CI Update", func() {
-						go func() {
-							err := s.RunCmd("xin ci update", x)
-							if err != nil {
-								log.Println(err)
-							}
-						}()
-					})
-					s.buttonBox.Add(ciStart)
-					s.buttonBox.Add(ciUpdate)
+					x.ci = s
 				}
 			}
 		}
@@ -563,11 +547,30 @@ func buildCards(stat *xinStatus) fyne.CanvasObject {
 	stat.boundStrings = append(stat.boundStrings, bsCommitMsg)
 	stat.boundStrings = append(stat.boundStrings, bsCommitHash)
 
+	ciStart := widget.NewButton("CI Start", func() {
+		go func() {
+			err := stat.ci.RunCmd("xin ci start", stat)
+			if err != nil {
+				log.Println(err)
+			}
+		}()
+	})
+	ciUpdate := widget.NewButton("CI Update", func() {
+		go func() {
+			err := stat.ci.RunCmd("xin ci update", stat)
+			if err != nil {
+				log.Println(err)
+			}
+		}()
+	})
+
 	statusCard := widget.NewCard("Xin Status", "", container.NewVBox(
 		widget.NewLabelWithData(bsCommitMsg),
+		container.NewHBox(ciStart, ciUpdate),
 		stat.upgradeProgress,
 	))
 	stat.cards = append(cards, statusCard)
+
 	return container.NewVBox(
 		statusCard,
 		container.NewGridWithColumns(3, cards...),
