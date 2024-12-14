@@ -652,6 +652,18 @@ func main() {
 		m := fyne.NewMenu("xintray",
 			fyne.NewMenuItem("Show", func() {
 				w.Show()
+			}),
+			fyne.NewMenuItem("Run CI", func() {
+				err := status.ci.RunCmd("xin ci start", status)
+				if err != nil {
+					log.Println(err)
+				}
+			}),
+			fyne.NewMenuItem("Update", func() {
+				err := status.ci.RunCmd("xin ci update", status)
+				if err != nil {
+					log.Println(err)
+				}
 			}))
 		desk.SetSystemTrayMenu(m)
 		desk.SetSystemTrayIcon(iconImg)
