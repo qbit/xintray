@@ -17,10 +17,10 @@
           xintray = with pkgs;
             buildGoModule rec {
               pname = "xintray";
-              version = "v0.2.3";
+              version = "v0.2.4";
               src = ./.;
 
-              vendorHash = "sha256-KX0uk3jAfleA2RrqQIaKAOZjwWrY1q+7MfdAEDzYll0=";
+              vendorHash = "sha256-UQAyr9IBzgS6oW/GawRXDTQcVgUS2Smd+VakiuYGadE=";
               proxyVendor = true;
 
               nativeBuildInputs = [ pkg-config copyDesktopItems ];
@@ -75,6 +75,8 @@
               nilaway
 
               glfw
+              libGL
+              libGLU
               pkg-config
               xorg.libXcursor
               xorg.libXi

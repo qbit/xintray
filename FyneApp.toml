@@ -5,4 +5,4 @@ Website = "https://github.com/qbit/xintray"
   Name = "xintray"
   ID = "dev.suah.xintray"
   Version = "1.0.0"
-  Build = 2
+  Build = 3
