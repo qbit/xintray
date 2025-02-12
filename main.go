@@ -74,24 +74,24 @@ func (s *Status) SshClose() error {
 	return s.client.Close()
 }
 
-func (s *Status) RunCmd(cmd string, x *xinStatus) error {
+func makeSshClient(x *xinStatus) (*ssh.ClientConfig, error) {
 	khFile := path.Clean(path.Join(os.Getenv("HOME"), ".ssh/known_hosts"))
 	hostKeyCB, err := knownhosts.New(khFile)
 	if err != nil {
-		return fmt.Errorf("can't parse %q: %q", khFile, err)
+		return nil, err
 	}
 
 	key, err := os.ReadFile(x.config.PrivKeyPath)
 	if err != nil {
-		return fmt.Errorf("can't load key %q: %q", x.config.PrivKeyPath, err)
+		return nil, err
 	}
 
 	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
-		return fmt.Errorf("can't parse key: %q", err)
+		return nil, err
 	}
 
-	sshConf := &ssh.ClientConfig{
+	return &ssh.ClientConfig{
 		User:              "root",
 		HostKeyAlgorithms: []string{"ssh-ed25519"},
 		Auth: []ssh.AuthMethod{
@@ -99,9 +99,16 @@ func (s *Status) RunCmd(cmd string, x *xinStatus) error {
 		},
 		Timeout:         2 * time.Second,
 		HostKeyCallback: hostKeyCB,
-	}
+	}, nil
 
+}
+
+func (s *Status) RunCmd(cmd string, x *xinStatus) error {
 	ds := fmt.Sprintf("%s:%d", s.Host, s.Port)
+	sshConf, err := makeSshClient(x)
+	if err != nil {
+		return err
+	}
 
 	s.client, err = ssh.Dial("tcp", ds, sshConf)
 	if err != nil {
@@ -257,32 +264,10 @@ func (x *xinStatus) updateRepoInfo() error {
 }
 
 func (x *xinStatus) updateHostInfo() error {
-	khFile := path.Clean(path.Join(os.Getenv("HOME"), ".ssh/known_hosts"))
-	hostKeyCB, err := knownhosts.New(khFile)
+	sshConf, err := makeSshClient(x)
 	if err != nil {
-		return fmt.Errorf("can't parse %q: %q", khFile, err)
+		return err
 	}
-
-	key, err := os.ReadFile(x.config.PrivKeyPath)
-	if err != nil {
-		return fmt.Errorf("can't load key %q: %q", x.config.PrivKeyPath, err)
-	}
-
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		return fmt.Errorf("can't parse key: %q", err)
-	}
-
-	sshConf := &ssh.ClientConfig{
-		User:              "root",
-		HostKeyAlgorithms: []string{"ssh-ed25519"},
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		Timeout:         2 * time.Second,
-		HostKeyCallback: hostKeyCB,
-	}
-
 	upToDateCount := len(x.config.Statuses)
 	for _, s := range x.config.Statuses {
 		s := s
