@@ -548,10 +548,22 @@ func buildCards(stat *xinStatus) fyne.CanvasObject {
 			}
 		}()
 	})
+	updateAll := widget.NewButton("Update All", func() {
+		for _, s := range stat.config.Statuses {
+			host := s
+			log.Printf("updating %s", host.Host)
+			go func() {
+				err := host.RunCmd("xin update", stat)
+				if err != nil {
+					log.Println(err)
+				}
+			}()
+		}
+	})
 
 	statusCard := widget.NewCard("Xin Status", "", container.NewVBox(
 		widget.NewLabelWithData(bsCommitMsg),
-		container.NewHBox(ciStart, ciUpdate),
+		container.NewHBox(ciStart, ciUpdate, updateAll),
 		stat.upgradeProgress,
 	))
 	stat.cards = append(cards, statusCard)
