@@ -5,8 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -55,6 +57,8 @@ type Status struct {
 	buttonBox         *fyne.Container
 	commit            commit
 	client            *ssh.Client
+	sshConn           ssh.Conn
+	conn              net.Conn
 	clientEstablished bool
 	upToDate          bool
 
@@ -64,14 +68,29 @@ type Status struct {
 	NixpkgsRevision       string `json:"nixpkgsRevision"`
 	SystemDiff            string `json:"system_diff"`
 	Host                  string `json:"host"`
+	Name                  string `json:"name"`
+	MAC                   string `json:"mac"`
 	Port                  int32  `json:"port"`
 	Uname                 string `json:"uname_a"`
 	Uptime                string `json:"uptime"`
 }
 
+func (s *Status) PrettyName() string {
+	if s.Name != "" {
+		return s.Name
+	}
+	return s.Host
+}
+
 func (s *Status) SshClose() error {
+	s.card.Subtitle = "can't connect"
+	fyne.Do(s.card.Refresh)
+
 	s.clientEstablished = false
 	return s.client.Close()
+	// s.sshConn.Close()
+
+	// return s.conn.Close()
 }
 
 func makeSshClient(x *xinStatus) (*ssh.ClientConfig, error) {
@@ -272,18 +291,33 @@ func (x *xinStatus) updateHostInfo() error {
 	for _, s := range x.config.Statuses {
 		s := s
 		var err error
+		sshReset := func(reason string, err error) {
+			upToDateCount--
+			s.clientEstablished = false
+
+			if len(s.buttonBox.Objects) > 1 {
+				s.buttonBox.RemoveAll()
+			}
+
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				log.Println("Exceeded")
+			}
+
+			log.Println(reason, err)
+		}
 		ds := fmt.Sprintf("%s:%d", s.Host, s.Port)
 		if !s.clientEstablished {
-			s.client, err = ssh.Dial("tcp", ds, sshConf)
-			if err != nil {
-				s.card.Subtitle = "can't connect"
-				upToDateCount = upToDateCount - 1
-				x.Log(fmt.Sprintf("can't Dial host %q (%q): %q", s.Host, ds, err))
-				s.card.Refresh()
-				continue
-			}
-			s.clientEstablished = true
-
+			log.Printf("establishing connection to %q", s.Host)
+			wakeButton := widget.NewButton("Wake", func() {
+				go func() {
+					log.Printf("sending wake to %s", s.Host)
+					mac, err := net.ParseMAC(s.MAC)
+					if err != nil {
+						log.Println(err)
+					}
+					sendMagicPacket(mac)
+				}()
+			})
 			restartButton := widget.NewButton("Reboot", func() {
 				go func() {
 					cnf := dialog.NewConfirm("Confirmation", fmt.Sprintf("Are you sure you want to reboot %q?", s.Host), func(doit bool) {
@@ -313,37 +347,70 @@ func (x *xinStatus) updateHostInfo() error {
 			})
 
 			if len(s.buttonBox.Objects) == 0 {
+				s.buttonBox.Add(wakeButton)
+			}
+
+			dialer := &net.Dialer{
+				Timeout:   time.Second * 5,
+				KeepAlive: time.Second * 5,
+			}
+
+			conn, err := dialer.Dial("tcp", ds)
+			if err != nil {
+				sshReset(fmt.Sprintf("can't dial %s", ds), err)
+				continue
+			}
+
+			err = conn.SetDeadline(time.Now().Add(time.Second * 15))
+			if err != nil {
+				sshReset("deadline hit Dial", err)
+				continue
+			}
+
+			clientConn, chans, reqs, err := ssh.NewClientConn(conn, ds, sshConf)
+			if err != nil {
+				sshReset("can't create SSH client connection", err)
+				continue
+			}
+
+			s.conn = conn
+			s.client = ssh.NewClient(clientConn, chans, reqs)
+			s.clientEstablished = true
+
+			if len(s.buttonBox.Objects) == 1 {
+				s.buttonBox.RemoveAll()
 				s.buttonBox.Add(restartButton)
 				s.buttonBox.Add(updateButton)
-
-				if s.Host == x.config.CIHost {
-					x.ci = s
-				}
 			}
+
+			if s.Host == x.config.CIHost {
+				x.ci = s
+			}
+		}
+
+		err = s.conn.SetDeadline(time.Now().Add(time.Second * 25))
+		if err != nil {
+			sshReset("hit deadline session", err)
+			s.conn.Close()
+			continue
 		}
 
 		session, err := s.client.NewSession()
 		if err != nil {
-			x.Log(fmt.Sprintf("can't create session: %q", err))
-			upToDateCount = upToDateCount - 1
-			s.clientEstablished = false
+			sshReset("can't create session", err)
 			continue
 		}
 		defer session.Close()
 
 		output, err := session.Output("xin status")
 		if err != nil {
-			x.Log(fmt.Sprintf("can't run command: %q", err))
-			upToDateCount = upToDateCount - 1
-			session.Close()
-			s.SshClose()
+			sshReset("can't run command", err)
 			continue
 		}
 
 		err = json.Unmarshal(output, s)
 		if err != nil {
-			x.Log(err.Error())
-			upToDateCount = upToDateCount - 1
+			sshReset("can't unmarshal output", err)
 			continue
 		}
 
@@ -353,7 +420,8 @@ func (x *xinStatus) updateHostInfo() error {
 		} else {
 			s.card.Subtitle = ""
 		}
-		s.card.Refresh()
+
+		fyne.Do(s.card.Refresh)
 
 		commit, err := x.getCommit(s.ConfigurationRevision)
 		if err != nil {
@@ -368,7 +436,9 @@ func (x *xinStatus) updateHostInfo() error {
 		}
 	}
 
-	x.upgradeProgress.SetValue(float64(upToDateCount))
+	fyne.Do(func() {
+		x.upgradeProgress.SetValue(float64(upToDateCount))
+	})
 
 	return nil
 }
@@ -465,7 +535,7 @@ func (s *Status) ToTable() *widget.Table {
 		// func (i widget.TableCellID) {}
 	)
 
-	t.Refresh()
+	fyne.Do(t.Refresh)
 
 	t.SetColumnWidth(0, 300.0)
 	t.SetColumnWidth(1, 600.0)
@@ -477,7 +547,7 @@ func (s *Status) ToTable() *widget.Table {
 func buildCards(stat *xinStatus) fyne.CanvasObject {
 	var cards []fyne.CanvasObject
 	sort.Slice(stat.config.Statuses, func(i, j int) bool {
-		return stat.config.Statuses[i].Host < stat.config.Statuses[j].Host
+		return stat.config.Statuses[i].PrettyName() < stat.config.Statuses[j].PrettyName()
 	})
 	for _, s := range stat.config.Statuses {
 		// TODO: maybe not needed once loopvar stuff is solid?
@@ -502,7 +572,7 @@ func buildCards(stat *xinStatus) fyne.CanvasObject {
 
 		buttonHBox := container.NewHBox()
 
-		card := widget.NewCard(s.Host, "",
+		card := widget.NewCard(s.PrettyName(), "",
 			container.NewVBox(
 				container.NewHBox(bvl),
 				container.NewHBox(uvl),
@@ -636,7 +706,7 @@ func main() {
 	}()
 
 	for _, s := range status.config.Statuses {
-		tabs.Append(container.NewTabItem(s.Host, s.ToTable()))
+		tabs.Append(container.NewTabItem(s.PrettyName(), s.ToTable()))
 	}
 
 	tabs.SetTabLocation(container.TabLocationLeading)

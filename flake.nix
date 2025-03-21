@@ -17,10 +17,10 @@
           xintray = with pkgs;
             buildGoModule rec {
               pname = "xintray";
-              version = "v0.2.4";
+              version = "v0.2.5";
               src = ./.;
 
-              vendorHash = "sha256-UQAyr9IBzgS6oW/GawRXDTQcVgUS2Smd+VakiuYGadE=";
+              vendorHash = "sha256-4jal2I2XNEH8xp16w7WixgVr4Jj8shUgNBwTuHAADhw=";
               proxyVendor = true;
 
               nativeBuildInputs = [ pkg-config copyDesktopItems ];
@@ -44,7 +44,7 @@
               ];
 
               buildPhase = ''
-                ${fyne}/bin/fyne package --tags wayland
+                ${fyne}/bin/fyne package
               '';
 
               installPhase = ''
