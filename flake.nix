@@ -9,18 +9,18 @@
         [ "x86_64-linux" "x86_64-darwin" "aarch64-linux" "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
       nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; });
-    in {
+    in
+    {
       packages = forAllSystems (system:
-        let pkgs = nixpkgsFor.${system};
-
-        in {
-          xintray = with pkgs;
-            buildGoModule rec {
-              pname = "xintray";
-              version = "v0.2.6";
+        let
+          pkgs = nixpkgsFor.${system};
+          mkPkg = { pname, useWayland ? false, ... }@args:
+            with pkgs;
+            buildGoModule (args // {
+              inherit pname;
+              version = "v0.2.7";
               src = ./.;
-
-              vendorHash = "sha256-4jal2I2XNEH8xp16w7WixgVr4Jj8shUgNBwTuHAADhw=";
+              vendorHash = "sha256-tX/D/CJ+Fr+DkTKlHv4UxlRSwaBsOrr7buPp4Q3ypFU=";
               proxyVendor = true;
 
               nativeBuildInputs = [ pkg-config copyDesktopItems ];
@@ -38,22 +38,34 @@
                 xorg.libXrandr
                 xorg.libXxf86vm
                 xorg.xinput
-
                 wayland
                 libxkbcommon
               ];
 
-              buildPhase = ''
-                ${fyne}/bin/fyne package
-              '';
+              buildPhase =
+                if useWayland then ''
+                  ${fyne}/bin/fyne package --tags wayland
+                '' else ''
+                  ${fyne}/bin/fyne package
+                '';
 
               installPhase = ''
                 mkdir -p $out
-                pkg="$PWD/${pname}.tar.xz"
+                pkg="$PWD/xintray.tar.xz"
                 cd $out
                 tar --strip-components=1 -xvf $pkg
               '';
-            };
+            });
+        in
+        {
+          xintray = mkPkg {
+            pname = "xintray";
+            useWayland = true;
+          };
+          xintray-x11 = mkPkg {
+            pname = "xintray-x11";
+            useWayland = false;
+          };
         });
 
       defaultPackage = forAllSystems (system: self.packages.${system}.xintray);
@@ -87,7 +99,7 @@
 
               libxkbcommon
               wayland
-              
+
               go-font
             ];
           };
